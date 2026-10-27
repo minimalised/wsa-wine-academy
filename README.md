@@ -36,6 +36,8 @@ Google Ads API는 연령×성별 교차 데이터를 주지 않아서 기존 `�
 | `GCP_SA_KEY` | 서비스 계정 JSON 전체 |
 | `SHEET_ID` | 시트 URL의 `/d/` 뒤 ID |
 
+3. 수동 실행으로 확인을 마친 뒤 Settings → Secrets and variables → Actions → Variables에 `ADS_REPORT_ENABLED` = `true`를 추가하면 매일 예약 실행이 시작됩니다.
+
 ## 수동 실행
 
 Actions → Daily ads report → Run workflow에서 기간과 매체를 넣고 실행합니다. `dry_run`이 켜져 있으면(기본값) 시트는 읽기만 하고 탭별로 교체될 행 수만 출력합니다.

@@ -26,6 +26,8 @@ concurrency:
 
 jobs:
   load:
+    # 검증이 끝나기 전에는 예약 실행이 시트에 쓰지 않도록, 저장소 변수 ADS_REPORT_ENABLED=true일 때만 예약 실행한다.
+    if: github.event_name != 'schedule' || vars.ADS_REPORT_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
