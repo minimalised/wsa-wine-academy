@@ -6,6 +6,7 @@
 import argparse
 import calendar
 import datetime as dt
+import os
 from zoneinfo import ZoneInfo
 
 from . import transform
@@ -31,7 +32,23 @@ def windows(start=None, end=None):
     return (start, end), (month_start, month_end)
 
 
+REQUIRED = {
+    "google": ["GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET",
+               "GOOGLE_ADS_REFRESH_TOKEN", "GOOGLE_ADS_CUSTOMER_ID"],
+    "naver": ["NAVER_API_KEY", "NAVER_SECRET_KEY", "NAVER_CUSTOMER_ID"],
+    "sheet": ["GCP_SA_KEY", "SHEET_ID"],
+}
+
+
+def check_env(sources):
+    """비어 있는 Secret 이름을 한 번에 알려준다. 값은 출력하지 않는다."""
+    missing = [name for key in ("sheet", *sorted(sources)) for name in REQUIRED[key] if not os.environ.get(name)]
+    if missing:
+        raise SystemExit("등록되지 않았거나 비어 있는 Secret: " + ", ".join(missing))
+
+
 def run(start, end, dry_run, sources):
+    check_env(sources)
     (d_start, d_end), (m_start, m_end) = windows(start, end)
     print(f"일자 탭: {d_start} ~ {d_end} / 월 탭: {m_start} ~ {m_end}")
     sheet = open_sheet()
