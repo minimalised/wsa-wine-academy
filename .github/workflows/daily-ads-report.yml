@@ -1,0 +1,62 @@
+name: Daily ads report
+
+on:
+  schedule:
+    - cron: "0 22 * * *" # 매일 07:00 KST
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "시작일 YYYY-MM-DD (비우면 기본 기간)"
+        required: false
+      end:
+        description: "종료일 YYYY-MM-DD (비우면 어제)"
+        required: false
+      sources:
+        description: "google,naver 중 선택"
+        required: false
+        default: "google,naver"
+      dry_run:
+        description: "시트에 쓰지 않고 행 수만 확인"
+        type: boolean
+        default: true
+
+concurrency:
+  group: daily-ads-report
+  cancel-in-progress: false
+
+jobs:
+  load:
+    # 검증이 끝나기 전에는 예약 실행이 시트에 쓰지 않도록, 저장소 변수 ADS_REPORT_ENABLED=true일 때만 예약 실행한다.
+    if: github.event_name != 'schedule' || vars.ADS_REPORT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Load ads data into Google Sheets
+        env:
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GOOGLE_ADS_REFRESH_TOKEN: ${{ secrets.GOOGLE_ADS_REFRESH_TOKEN }}
+          GOOGLE_ADS_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_CUSTOMER_ID }}
+          GOOGLE_ADS_LOGIN_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_LOGIN_CUSTOMER_ID }}
+          NAVER_API_KEY: ${{ secrets.NAVER_API_KEY }}
+          NAVER_SECRET_KEY: ${{ secrets.NAVER_SECRET_KEY }}
+          NAVER_CUSTOMER_ID: ${{ secrets.NAVER_CUSTOMER_ID }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          START: ${{ inputs.start }}
+          END: ${{ inputs.end }}
+          SOURCES: ${{ inputs.sources || 'google,naver' }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--sources "$SOURCES")
+          [ -n "$START" ] && args+=(--start "$START")
+          [ -n "$END" ] && args+=(--end "$END")
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          python -m src.main "${args[@]}"
