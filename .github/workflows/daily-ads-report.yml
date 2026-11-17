@@ -1,0 +1,87 @@
+name: Daily ads report
+
+on:
+  schedule:
+    - cron: "0 22 * * *" # 매일 07:00 KST
+  workflow_dispatch:
+    inputs:
+      advertisers:
+        description: "광고주 id, 쉼표로 구분 (비우면 advertisers.yml에서 enabled인 광고주 전부)"
+        required: false
+      start:
+        description: "시작일 YYYY-MM-DD (비우면 기본 기간)"
+        required: false
+      end:
+        description: "종료일 YYYY-MM-DD (비우면 어제)"
+        required: false
+      sources:
+        description: "google,naver 중 선택 (비우면 광고주 설정대로)"
+        required: false
+      dry_run:
+        description: "시트에 쓰지 않고 행 수만 확인"
+        type: boolean
+        default: true
+
+jobs:
+  plan:
+    # 검증이 끝나기 전에는 예약 실행이 시트에 쓰지 않도록, 저장소 변수 ADS_REPORT_ENABLED=true일 때만 예약 실행한다.
+    if: github.event_name != 'schedule' || vars.ADS_REPORT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      advertisers: ${{ steps.list.outputs.advertisers }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - id: list
+        env:
+          ONLY: ${{ inputs.advertisers }}
+        run: echo "advertisers=$(python -m src.advertisers --only "$ONLY")" >> "$GITHUB_OUTPUT"
+
+  load:
+    needs: plan
+    name: ${{ matrix.advertiser.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      # 한 광고주가 실패해도 나머지는 계속 적재한다.
+      fail-fast: false
+      matrix:
+        advertiser: ${{ fromJSON(needs.plan.outputs.advertisers) }}
+    concurrency:
+      group: daily-ads-report-${{ matrix.advertiser.id }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Load ads data
+        # 광고주별 Secret(prefix 붙은 이름)이 있으면 그걸 쓰고, 없으면 공용 Secret을 쓴다.
+        env:
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets[format('{0}GOOGLE_ADS_CLIENT_ID', matrix.advertiser.prefix)] || secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets[format('{0}GOOGLE_ADS_CLIENT_SECRET', matrix.advertiser.prefix)] || secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GOOGLE_ADS_REFRESH_TOKEN: ${{ secrets[format('{0}GOOGLE_ADS_REFRESH_TOKEN', matrix.advertiser.prefix)] || secrets.GOOGLE_ADS_REFRESH_TOKEN }}
+          GOOGLE_ADS_LOGIN_CUSTOMER_ID: ${{ secrets[format('{0}GOOGLE_ADS_LOGIN_CUSTOMER_ID', matrix.advertiser.prefix)] || secrets.GOOGLE_ADS_LOGIN_CUSTOMER_ID }}
+          GOOGLE_ADS_CUSTOMER_ID: ${{ secrets[format('{0}GOOGLE_ADS_CUSTOMER_ID', matrix.advertiser.prefix)] }}
+          NAVER_API_KEY: ${{ secrets[format('{0}NAVER_API_KEY', matrix.advertiser.prefix)] }}
+          NAVER_SECRET_KEY: ${{ secrets[format('{0}NAVER_SECRET_KEY', matrix.advertiser.prefix)] }}
+          NAVER_CUSTOMER_ID: ${{ secrets[format('{0}NAVER_CUSTOMER_ID', matrix.advertiser.prefix)] }}
+          GCP_SA_KEY: ${{ secrets[format('{0}GCP_SA_KEY', matrix.advertiser.prefix)] || secrets.GCP_SA_KEY }}
+          SHEET_ID: ${{ secrets[format('{0}SHEET_ID', matrix.advertiser.prefix)] }}
+          SECRET_PREFIX: ${{ matrix.advertiser.prefix }}
+          START: ${{ inputs.start }}
+          END: ${{ inputs.end }}
+          SOURCES: ${{ inputs.sources || matrix.advertiser.sources }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--sources "$SOURCES")
+          [ -n "$START" ] && args+=(--start "$START")
+          [ -n "$END" ] && args+=(--end "$END")
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          python -m src.main "${args[@]}"
