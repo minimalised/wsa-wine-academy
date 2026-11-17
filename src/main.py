@@ -44,7 +44,9 @@ def check_env(sources):
     """비어 있는 Secret 이름을 한 번에 알려준다. 값은 출력하지 않는다."""
     missing = [name for key in ("sheet", *sorted(sources)) for name in REQUIRED[key] if not os.environ.get(name)]
     if missing:
-        raise SystemExit("등록되지 않았거나 비어 있는 Secret: " + ", ".join(missing))
+        prefix = os.environ.get("SECRET_PREFIX", "")
+        hint = f" (광고주별 Secret이면 이름 앞에 {prefix})" if prefix else ""
+        raise SystemExit("등록되지 않았거나 비어 있는 Secret: " + ", ".join(missing) + hint)
 
 
 def run(start, end, dry_run, sources):

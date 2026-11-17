@@ -1,6 +1,19 @@
-# WSA 와인아카데미 광고 리포트 자동화
+# 광고 리포트 자동화
 
-Google Ads와 네이버 검색광고 데이터를 매일 구글 시트에 적재합니다. Looker Studio 리포트는 이 시트의 통합 탭을 읽습니다.
+광고주별 Google Ads와 네이버 검색광고 데이터를 매일 구글 시트에 적재합니다. 첫 광고주는 WSA와인아카데미이고, Looker Studio 리포트는 이 시트의 통합 탭을 읽습니다.
+
+## 광고주
+
+광고주 목록은 `advertisers.yml`에 있습니다. 워크플로는 광고주마다 따로 실행되어서 한 곳이 실패해도 나머지는 계속 적재됩니다.
+
+광고주를 추가하려면:
+
+1. `advertisers.yml`에 항목을 추가하고 `secret_prefix`를 정합니다(예: `ACME_`).
+2. 그 광고주의 값을 prefix를 붙인 Secret으로 등록합니다: `ACME_SHEET_ID`, `ACME_GOOGLE_ADS_CUSTOMER_ID`, `ACME_NAVER_API_KEY`, `ACME_NAVER_SECRET_KEY`, `ACME_NAVER_CUSTOMER_ID`.
+3. 다른 구글 계정이나 MCC로 접근해야 하면 `ACME_GOOGLE_ADS_REFRESH_TOKEN`, `ACME_GOOGLE_ADS_LOGIN_CUSTOMER_ID` 등도 등록합니다. 없으면 공용 Secret을 씁니다.
+4. 그 광고주 시트를 서비스 계정 이메일에 편집자로 공유합니다.
+
+계정 ID와 시트 ID는 공개 저장소에 올리지 않도록 `advertisers.yml`이 아니라 Secret에 둡니다. 적재 방식은 지금 `sheets_wsa`(아래 탭 구조) 하나입니다. 시트 구조가 다른 광고주는 적재 방식을 새로 추가해야 합니다.
 
 ## 동작
 
@@ -25,7 +38,7 @@ Google Ads API는 연령×성별 교차 데이터를 주지 않아서 기존 `�
 ## 설정
 
 1. Google Cloud에서 서비스 계정을 만들고 Google Sheets API를 켠 뒤 JSON 키를 받습니다. 시트를 서비스 계정 이메일에 **편집자**로 공유합니다.
-2. 저장소 Settings → Secrets and variables → Actions에 아래 값을 등록합니다.
+2. 저장소 Settings → Secrets and variables → Actions에 아래 값을 등록합니다. WSA는 prefix가 없어서 아래 이름 그대로 씁니다.
 
 | Secret | 내용 |
 | --- | --- |
@@ -40,7 +53,7 @@ Google Ads API는 연령×성별 교차 데이터를 주지 않아서 기존 `�
 
 ## 수동 실행
 
-Actions → Daily ads report → Run workflow에서 기간과 매체를 넣고 실행합니다. `dry_run`이 켜져 있으면(기본값) 시트는 읽기만 하고 탭별로 교체될 행 수만 출력합니다.
+Actions → Daily ads report → Run workflow에서 광고주, 기간, 매체를 넣고 실행합니다. 광고주를 비우면 `enabled: true`인 광고주 전부를 돌립니다. `dry_run`이 켜져 있으면(기본값) 시트는 읽기만 하고 탭별로 교체될 행 수만 출력합니다.
 
 로컬에서는 같은 환경변수를 설정하고 실행합니다.
 
