@@ -103,9 +103,6 @@ def main():
     p.add_argument("--dry-run", action="store_true", help="시트를 읽기만 하고 교체될 행 수를 출력")
     p.add_argument("--sources", default="google,naver", help="google,naver 중 쉼표로 구분")
     args = p.parse_args()
-    if args.sources == "naver_probe":  # 임시 진단용
-        from .naver_probe import main as probe
-        return probe()
     if args.end and not args.start:
         p.error("--end는 --start와 함께 써야 합니다")
     run(args.start, args.end, args.dry_run, set(args.sources.split(",")))

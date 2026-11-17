@@ -16,11 +16,12 @@ BASE_URL = "https://api.searchad.naver.com"
 
 # AD_DETAIL: Date, Customer ID, Campaign ID, Ad Group ID, Ad Keyword ID, Ad ID, Business Channel ID,
 #            Hours, Region code, Media code, PC Mobile Type, Impression, Click, Cost, Sum of AD rank, View count
-# AD_CONVERSION_DETAIL: Date, Customer ID, Campaign ID, Ad Group ID, Ad Keyword ID, Ad ID, Business Channel ID,
-#            Hours, Region code, Media code, PC Mobile Type, Conversion Method, Conversion Type,
-#            Conversion count, Sales by conversion
+# AD_CONVERSION: Date, Customer ID, Campaign ID, Ad Group ID, Ad Keyword ID, Ad ID, Business Channel ID,
+#            Media code, PC Mobile Type, Conversion Method, Conversion Type, Conversion count, Sales by conversion
+# 전환은 AD_CONVERSION_DETAIL이 아니라 AD_CONVERSION을 쓴다. DETAIL은 최근 기간만 남아 있어서 지난달 이전은 비어 있다.
 DETAIL_COLS = {"campaign": 2, "adgroup": 3, "keyword": 4, "device": 10, "imp": 11, "clk": 12, "cost": 13}
-CONV_COLS = {"campaign": 2, "adgroup": 3, "keyword": 4, "device": 10, "type": 12, "count": 13, "sales": 14}
+CONV_COLS = {"campaign": 2, "adgroup": 3, "keyword": 4, "device": 8, "type": 10, "count": 11, "sales": 12}
+CONV_REPORT = "AD_CONVERSION"
 
 DEVICE = {"P": "PC", "M": "모바일"}
 NO_DATA = 10004  # "선택하신 조건에 지표가 확인되지 않습니다"
@@ -112,7 +113,7 @@ class NaverAds:
     def daily_facts(self, days):
         """일 × 캠페인ID × 키워드ID × 기기 단위로 노출·클릭·비용·구매완료 전환을 합친 dict."""
         facts = defaultdict(lambda: [0, 0, 0, 0, 0])
-        conv_types = set()
+        conv_types = defaultdict(lambda: [0, 0])
         for day in days:
             for r in self._report("AD_DETAIL", day):
                 key = (day, r[DETAIL_COLS["campaign"]], r[DETAIL_COLS["keyword"]], r[DETAIL_COLS["device"]])
@@ -120,16 +121,18 @@ class NaverAds:
                 f[0] += int(r[DETAIL_COLS["imp"]])
                 f[1] += int(r[DETAIL_COLS["clk"]])
                 f[2] += round(float(r[DETAIL_COLS["cost"]]))
-            for r in self._report("AD_CONVERSION_DETAIL", day):
-                conv_types.add(r[CONV_COLS["type"]])
+            for r in self._report(CONV_REPORT, day):
+                conv_types[r[CONV_COLS["type"]]][0] += int(r[CONV_COLS["count"]])
+                conv_types[r[CONV_COLS["type"]]][1] += round(float(r[CONV_COLS["sales"]]))
                 if r[CONV_COLS["type"]] != PURCHASE:
                     continue
                 key = (day, r[CONV_COLS["campaign"]], r[CONV_COLS["keyword"]], r[CONV_COLS["device"]])
                 f = facts[key]
                 f[3] += int(r[CONV_COLS["count"]])
                 f[4] += round(float(r[CONV_COLS["sales"]]))
-        # 구매완료 외 전환 유형 값이 무엇으로 오는지 확인용
-        print("네이버 전환 유형:", ", ".join(sorted(conv_types)) or "없음")
+        # 시트·광고 관리자 수치와 대조하기 쉽게 전환 유형별 합계를 남긴다.
+        summary = ", ".join(f"{t} {c}건 {s:,}원" for t, (c, s) in sorted(conv_types.items()))
+        print("네이버 전환 유형별 합계:", summary or "없음")
         return facts
 
     # ---------- 시트 탭 형식 ----------
