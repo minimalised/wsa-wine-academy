@@ -23,6 +23,18 @@ DETAIL_COLS = {"campaign": 2, "adgroup": 3, "keyword": 4, "device": 10, "imp": 1
 CONV_COLS = {"campaign": 2, "adgroup": 3, "keyword": 4, "device": 10, "type": 12, "count": 13, "sales": 14}
 
 DEVICE = {"P": "PC", "M": "모바일"}
+NO_DATA = 10004  # "선택하신 조건에 지표가 확인되지 않습니다"
+
+
+class NoData(Exception):
+    pass
+
+
+def _error_code(res):
+    try:
+        return res.json().get("code")
+    except ValueError:
+        return None
 PURCHASE = "purchase"
 
 
@@ -46,6 +58,8 @@ class NaverAds:
 
     def _request(self, method, uri, **kwargs):
         res = requests.request(method, BASE_URL + uri, headers=self._headers(method, uri), timeout=60, **kwargs)
+        if res.status_code == 400 and _error_code(res) == NO_DATA:
+            raise NoData()
         if not res.ok:
             raise RuntimeError(f"네이버 API {method} {uri} {res.status_code}: {res.text[:500]} (요청: {kwargs.get('json')})")
         return res
@@ -67,7 +81,11 @@ class NaverAds:
     # ---------- 대용량 보고서 ----------
 
     def _report(self, report_tp, day):
-        job = self._request("POST", "/stat-reports", json={"reportTp": report_tp, "statDt": f"{day:%Y%m%d}"}).json()
+        try:
+            job = self._request("POST", "/stat-reports", json={"reportTp": report_tp, "statDt": f"{day:%Y%m%d}"}).json()
+        except NoData:
+            # 그날 해당 지표가 하나도 없으면(예: 전환 0건) 보고서를 만들지 않고 400을 돌려준다.
+            return []
         job_id = job["reportJobId"]
         try:
             for _ in range(60):
