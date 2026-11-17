@@ -15,11 +15,12 @@ import requests
 BASE_URL = "https://api.searchad.naver.com"
 
 # AD_DETAIL: Date, Customer ID, Campaign ID, Ad Group ID, Ad Keyword ID, Ad ID, Business Channel ID,
-#            Media code, PC Mobile Type, Impression, Click, Cost, Sum of AD rank, View count
+#            Hours, Region code, Media code, PC Mobile Type, Impression, Click, Cost, Sum of AD rank, View count
 # AD_CONVERSION_DETAIL: Date, Customer ID, Campaign ID, Ad Group ID, Ad Keyword ID, Ad ID, Business Channel ID,
-#            Media code, PC Mobile Type, Conversion Method, Conversion Type, Conversion count, Sales by conversion
-DETAIL_COLS = {"campaign": 2, "adgroup": 3, "keyword": 4, "device": 8, "imp": 9, "clk": 10, "cost": 11}
-CONV_COLS = {"campaign": 2, "adgroup": 3, "keyword": 4, "device": 8, "type": 10, "count": 11, "sales": 12}
+#            Hours, Region code, Media code, PC Mobile Type, Conversion Method, Conversion Type,
+#            Conversion count, Sales by conversion
+DETAIL_COLS = {"campaign": 2, "adgroup": 3, "keyword": 4, "device": 10, "imp": 11, "clk": 12, "cost": 13}
+CONV_COLS = {"campaign": 2, "adgroup": 3, "keyword": 4, "device": 10, "type": 12, "count": 13, "sales": 14}
 
 DEVICE = {"P": "PC", "M": "모바일"}
 PURCHASE = "purchase"
@@ -83,13 +84,16 @@ class NaverAds:
             path = urlparse(url).path
             res = requests.get(url, headers=self._headers("GET", path), timeout=120)
             res.raise_for_status()
-            return list(csv.reader(io.StringIO(res.content.decode("utf-8")), delimiter="\t"))
+            rows = list(csv.reader(io.StringIO(res.content.decode("utf-8")), delimiter="\t"))
+            _check_columns(report_tp, rows)
+            return rows
         finally:
             self._request("DELETE", f"/stat-reports/{job_id}")
 
     def daily_facts(self, days):
         """일 × 캠페인ID × 키워드ID × 기기 단위로 노출·클릭·비용·구매완료 전환을 합친 dict."""
         facts = defaultdict(lambda: [0, 0, 0, 0, 0])
+        conv_types = set()
         for day in days:
             for r in self._report("AD_DETAIL", day):
                 key = (day, r[DETAIL_COLS["campaign"]], r[DETAIL_COLS["keyword"]], r[DETAIL_COLS["device"]])
@@ -98,12 +102,15 @@ class NaverAds:
                 f[1] += int(r[DETAIL_COLS["clk"]])
                 f[2] += round(float(r[DETAIL_COLS["cost"]]))
             for r in self._report("AD_CONVERSION_DETAIL", day):
+                conv_types.add(r[CONV_COLS["type"]])
                 if r[CONV_COLS["type"]] != PURCHASE:
                     continue
                 key = (day, r[CONV_COLS["campaign"]], r[CONV_COLS["keyword"]], r[CONV_COLS["device"]])
                 f = facts[key]
                 f[3] += int(r[CONV_COLS["count"]])
                 f[4] += round(float(r[CONV_COLS["sales"]]))
+        # 구매완료 외 전환 유형 값이 무엇으로 오는지 확인용
+        print("네이버 전환 유형:", ", ".join(sorted(conv_types)) or "없음")
         return facts
 
     # ---------- 시트 탭 형식 ----------
@@ -128,6 +135,15 @@ class NaverAds:
             key = (day, self._label("campaign", camp), DEVICE.get(device, device))
             out[key] = [a + b for a, b in zip(out[key], f)]
         return [[*k, *v] for k, v in out.items()]
+
+
+def _check_columns(report_tp, rows):
+    """보고서 열 구성이 바뀌면 엉뚱한 열을 합산하지 않도록 바로 멈춘다."""
+    cols = DETAIL_COLS if report_tp == "AD_DETAIL" else CONV_COLS
+    need = max(cols.values()) + 1
+    for r in rows[:1]:
+        if len(r) < need or r[cols["device"]] not in DEVICE:
+            raise RuntimeError(f"네이버 {report_tp} 열 구성이 예상과 다릅니다: {len(r)}열, 첫 행 {r}")
 
 
 def days_between(start, end):
