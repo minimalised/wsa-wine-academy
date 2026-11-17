@@ -46,7 +46,8 @@ class NaverAds:
 
     def _request(self, method, uri, **kwargs):
         res = requests.request(method, BASE_URL + uri, headers=self._headers(method, uri), timeout=60, **kwargs)
-        res.raise_for_status()
+        if not res.ok:
+            raise RuntimeError(f"네이버 API {method} {uri} {res.status_code}: {res.text[:500]} (요청: {kwargs.get('json')})")
         return res
 
     # ---------- 이름 매핑 ----------
